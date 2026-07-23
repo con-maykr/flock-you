@@ -3,7 +3,7 @@
 #include "esp_wifi.h"
 #include <ctype.h>
 #include <string.h>
-#include <SPIFFS.h>
+#include <LittleFS.h>
 #include "display_dongle.h"
 
 // ============================================================
@@ -173,7 +173,7 @@ static void IRAM_ATTR enqueueAlert(AlertType type, const uint8_t* mac, int8_t rs
 }
 
 // ============================================================
-// DETECTION TABLE  (on-device storage, persisted to SPIFFS)
+// DETECTION TABLE  (on-device storage, persisted to LittleFS)
 // ============================================================
 //
 // Single-threaded: only touched from loop() — drainAlertQueue() adds, and
@@ -193,7 +193,7 @@ typedef struct {
 
 static FYDetection fyDet[MAX_DETECTIONS];
 static int           fyDetCount       = 0;
-static bool          fySpiffsReady    = false;
+static bool          fyFsReady    = false;
 static bool          fyDirty          = false;
 static unsigned long fyLastSaveAt     = 0;
 static int           fyLastSaveCount  = 0;
@@ -586,7 +586,7 @@ static size_t jsonEscape(char* dst, size_t cap, const char* src) {
 }
 
 // ============================================================
-// CRC32  (zlib / SPIFFS-tool compatible polynomial 0xEDB88320)
+// CRC32  (standard zlib-compatible polynomial 0xEDB88320)
 // ============================================================
 
 static uint32_t fyCRC32Update(uint32_t crc, const uint8_t* data, size_t len) {
@@ -600,7 +600,7 @@ static uint32_t fyCRC32Update(uint32_t crc, const uint8_t* data, size_t len) {
 }
 
 // ============================================================
-// SPIFFS SESSION PERSISTENCE  — bulletproof envelope format
+// LITTLEFS SESSION PERSISTENCE  — bulletproof envelope format
 // ============================================================
 //
 // Wire format on disk:
@@ -663,8 +663,8 @@ static bool fyParseEnvelope(const char* hdr, size_t& outBytes, uint32_t& outCrc)
 }
 
 static bool fyValidateSessionFile(const char* path) {
-  if (!SPIFFS.exists(path)) return false;
-  File f = SPIFFS.open(path, "r");
+  if (!LittleFS.exists(path)) return false;
+  File f = LittleFS.open(path, "r");
   if (!f) return false;
 
   String hdr = f.readStringUntil('\n');
@@ -694,10 +694,10 @@ static bool fyValidateSessionFile(const char* path) {
   return (remaining == 0 && crc == expectedCRC);
 }
 
-static bool fySpiffsCopy(const char* src, const char* dst) {
-  File s = SPIFFS.open(src, "r");
+static bool fyFsCopy(const char* src, const char* dst) {
+  File s = LittleFS.open(src, "r");
   if (!s) return false;
-  File d = SPIFFS.open(dst, "w");
+  File d = LittleFS.open(dst, "w");
   if (!d) { s.close(); return false; }
   uint8_t buf[256];
   int n;
@@ -711,21 +711,21 @@ static bool fySpiffsCopy(const char* src, const char* dst) {
 }
 
 static bool fyAtomicPromote(const char* src, const char* dst) {
-  if (SPIFFS.rename(src, dst)) return true;
-  if (!fySpiffsCopy(src, dst)) return false;
-  SPIFFS.remove(src);
+  if (LittleFS.rename(src, dst)) return true;
+  if (!fyFsCopy(src, dst)) return false;
+  LittleFS.remove(src);
   return true;
 }
 
 static void fySaveSession() {
-  if (!fySpiffsReady) return;
+  if (!fyFsReady) return;
   if (!fyDirty && fyDetCount == fyLastSaveCount) return;
 
   size_t   payloadBytes = 0;
   uint32_t crc          = fyComputePayloadCRC(payloadBytes);
   int      savedCount   = fyDetCount;
 
-  File f = SPIFFS.open(FY_SESSION_TMP, "w");
+  File f = LittleFS.open(FY_SESSION_TMP, "w");
   if (!f) {
     dualPrintf("[flockyou] save failed: cannot open %s\n", FY_SESSION_TMP);
     return;
@@ -757,7 +757,7 @@ static void fySaveSession() {
     return;
   }
 
-  SPIFFS.remove(FY_SESSION_FILE);
+  LittleFS.remove(FY_SESSION_FILE);
   if (!fyAtomicPromote(FY_SESSION_TMP, FY_SESSION_FILE)) {
     dualPrintf("[flockyou] promote FAILED — data in %s for recovery\n", FY_SESSION_TMP);
     return;
@@ -773,27 +773,27 @@ static void fySaveSession() {
 // Promote any valid session file from last boot into /prev_session.json, then
 // start this boot with a fresh empty table. Preserves history across power cycles.
 static void fyPromotePrevSession() {
-  if (!fySpiffsReady) return;
+  if (!fyFsReady) return;
 
   const char* source = nullptr;
   if      (fyValidateSessionFile(FY_SESSION_FILE)) source = FY_SESSION_FILE;
   else if (fyValidateSessionFile(FY_SESSION_TMP))  source = FY_SESSION_TMP;
 
   if (!source) {
-    if (SPIFFS.exists(FY_SESSION_FILE)) SPIFFS.remove(FY_SESSION_FILE);
-    if (SPIFFS.exists(FY_SESSION_TMP))  SPIFFS.remove(FY_SESSION_TMP);
+    if (LittleFS.exists(FY_SESSION_FILE)) LittleFS.remove(FY_SESSION_FILE);
+    if (LittleFS.exists(FY_SESSION_TMP))  LittleFS.remove(FY_SESSION_TMP);
     dualPrintln("[flockyou] no valid prior session to promote");
     return;
   }
 
-  if (!fySpiffsCopy(source, FY_PREV_FILE)) {
+  if (!fyFsCopy(source, FY_PREV_FILE)) {
     dualPrintf("[flockyou] failed to promote %s → %s\n", source, FY_PREV_FILE);
     return;
   }
-  if (SPIFFS.exists(FY_SESSION_FILE)) SPIFFS.remove(FY_SESSION_FILE);
-  if (SPIFFS.exists(FY_SESSION_TMP))  SPIFFS.remove(FY_SESSION_TMP);
+  if (LittleFS.exists(FY_SESSION_FILE)) LittleFS.remove(FY_SESSION_FILE);
+  if (LittleFS.exists(FY_SESSION_TMP))  LittleFS.remove(FY_SESSION_TMP);
 
-  File v = SPIFFS.open(FY_PREV_FILE, "r");
+  File v = LittleFS.open(FY_PREV_FILE, "r");
   size_t sz = v ? v.size() : 0;
   if (v) v.close();
   dualPrintf("[flockyou] prior session promoted from %s (%u bytes)\n",
@@ -1238,7 +1238,7 @@ static void drainAlertQueue() {
     macToStr(e.mac, macStr, sizeof(macStr));
     const char* method = alertTypeToMethod(e.type);
 
-    // Always update the on-device detection table (survives reboot via SPIFFS).
+    // Always update the on-device detection table (survives reboot via LittleFS).
     // chirpWorthy = true for brand-new MACs AND for MACs rediscovered after
     // REDISCOVER_MS of silence (drove away and came back).
     bool chirpWorthy = false;
@@ -1302,7 +1302,7 @@ static void drainAlertQueue() {
 // ============================================================
 
 static void autosaveTick() {
-  if (!fySpiffsReady || !fyDirty) return;
+  if (!fyFsReady || !fyDirty) return;
   if (millis() - fyLastSaveAt < AUTOSAVE_INTERVAL_MS) return;
   fySaveSession();
 }
@@ -1359,13 +1359,13 @@ void setup() {
   precompileOuis();
   memset(dedupeTable, 0, sizeof(dedupeTable));
 
-  // SPIFFS — format on first boot if missing. Non-fatal if it fails.
-  if (SPIFFS.begin(true)) {
-    fySpiffsReady = true;
-    dualPrintln("[flockyou] SPIFFS ready");
+  // LittleFS — format on first boot if missing. Non-fatal if it fails.
+  if (LittleFS.begin(true)) {
+    fyFsReady = true;
+    dualPrintln("[flockyou] LittleFS ready");
     fyPromotePrevSession();
   } else {
-    dualPrintln("[flockyou] SPIFFS init FAILED — running without persistence");
+    dualPrintln("[flockyou] LittleFS init FAILED — running without persistence");
   }
 
   WiFi.mode(WIFI_MODE_NULL);
@@ -1391,9 +1391,9 @@ void setup() {
   esp_wifi_set_promiscuous(true);
 
   dualPrintln("[flockyou] merged WiFi detector started");
-  dualPrintf("[flockyou] mode=%s dwell_ms=%u start_channel=%u rssi_min=%d spiffs=%d\n",
+  dualPrintf("[flockyou] mode=%s dwell_ms=%u start_channel=%u rssi_min=%d fs=%d\n",
                 channelModeName(), CHANNEL_DWELL_MS, currentChannel,
-                RSSI_MIN, fySpiffsReady ? 1 : 0);
+                RSSI_MIN, fyFsReady ? 1 : 0);
 
   lastHeartbeat = millis();
   fyLastSaveAt  = millis();
@@ -1406,7 +1406,7 @@ void setup() {
 void loop() {
   updateChannelMode();
   drainAlertQueue();   // Serial.printf happens here, not in callback
-  autosaveTick();      // periodic SPIFFS write if dirty
+  autosaveTick();      // periodic LittleFS write if dirty
   heartbeatTick();     // audible beep-pair while a target is still in range
   ledTick();           // turn off LED after LED_FLASH_MS
   dongleDisplayTick(millis(), currentChannel, fyDetCount);

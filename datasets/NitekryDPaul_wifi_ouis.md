@@ -109,7 +109,7 @@ list above. Source: [DeflockJoplin/flock-you](https://github.com/DeflockJoplin/f
 
 ## Firmware
 
-The `promiscuis-flock-you` firmware implementing this research is a mod of @NitekryDPaul's promiscuous-mode firmware. It emits Flask-compatible JSON over USB for ingestion by the `flock-you` dashboard and persists detections to on-device SPIFFS.
+The `promiscuis-flock-you` firmware implementing this research is a mod of @NitekryDPaul's promiscuous-mode firmware. It emits Flask-compatible JSON over USB for ingestion by the `flock-you` dashboard and persists detections to on-device LittleFS.
 
 ## Credit
 

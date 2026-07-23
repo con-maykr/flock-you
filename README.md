@@ -26,7 +26,7 @@ Turns a Seeed XIAO ESP32-S3 into a passive WiFi receiver that watches 2.4 GHz ma
 Every detection is:
 
 - beeped (piezo on GPIO3) and flashed (onboard LED on GPIO21)
-- written to on-device SPIFFS in an atomic CRC-envelope format, surviving power loss
+- written to on-device LittleFS in an atomic CRC-envelope format, surviving power loss
 - emitted as one JSON line over USB CDC in the schema `api/flockyou.py` expects, so the Flask dashboard auto-ingests it with GPS temporal matching
 
 The device works standalone (no USB host needed) and plugged in (live dashboard) without any mode switch.
@@ -90,7 +90,7 @@ When we get a hit, we emit `detection_method: wifi_wildcard_probe_ie_sig`. Broad
        │   autosaveTick()             ← every 60s when dirty
        │        │
        │        ▼
-       │   fySaveSession()            ← atomic CRC-envelope write to SPIFFS
+       │   fySaveSession()            ← atomic CRC-envelope write to LittleFS
        │
        ├─► shouldSuppressDuplicate()  ← 5s per-MAC serial-emit rate limit
        │
@@ -122,7 +122,7 @@ Full dataset and methodology: [`datasets/NitekryDPaul_wifi_ouis.md`](datasets/Ni
 
 ---
 
-## SPIFFS wire format
+## LittleFS wire format
 
 On-flash layout, atomic and crash-safe:
 
@@ -242,7 +242,7 @@ pio run -e heltec_wifi_lora_32_v4 -t upload   # flash Heltec V4
 pio device monitor
 ```
 
-`platformio.ini` and `partitions.csv` are at the root (1.9 MB SPIFFS partition, 6 MB app). The T-Dongle env adds **TFT_eSPI** for its SPI display; the Heltec env adds **Adafruit SSD1306/GFX/BusIO** for its I2C OLED; XIAO needs no extra libraries. The Heltec env's flash is 16 MB, but reuses the same 8 MB partition table as the other boards — the remaining ~8 MB is simply unpartitioned.
+`platformio.ini` and `partitions.csv` are at the root (1.9 MB LittleFS partition, 6 MB app). The T-Dongle env adds **TFT_eSPI** for its SPI display; the Heltec env adds **Adafruit SSD1306/GFX/BusIO** for its I2C OLED; XIAO needs no extra libraries. The Heltec env's flash is 16 MB, but reuses the same 8 MB partition table as the other boards — the remaining ~8 MB is simply unpartitioned.
 
 ---
 
@@ -260,7 +260,7 @@ pio device monitor
 | `PROCESS_MGMT_FRAMES` | 1 | Beacons, probe req/resp, etc. |
 | `PROCESS_DATA_FRAMES` | 1 | Data frames (where addr1 catch shines) |
 | `MAX_DETECTIONS` | 200 | On-device table cap |
-| `AUTOSAVE_INTERVAL_MS` | 60000 | SPIFFS save cadence |
+| `AUTOSAVE_INTERVAL_MS` | 60000 | LittleFS save cadence |
 | `LED_PIN` | 21 | Onboard user LED |
 | `BUZZER_PIN` | 3 | Piezo |
 
@@ -268,11 +268,11 @@ pio device monitor
 
 ## Standalone vs connected
 
-**Without USB:** device boots, plays the SMB 1-2 intro, starts scanning, stores every unique detection to SPIFFS, flashes the onboard LED on each hit. Plug in later — the prior session is sitting in `/prev_session.json`.
+**Without USB:** device boots, plays the SMB 1-2 intro, starts scanning, stores every unique detection to LittleFS, flashes the onboard LED on each hit. Plug in later — the prior session is sitting in `/prev_session.json`.
 
 **With USB + Flask running:** same thing, plus every detection streams live to the dashboard as a JSON line. Flask adds GPS (if configured) and deduplicates across MAC, building the wardriving map as you move.
 
-Both modes work simultaneously — the SPIFFS write path doesn't care if a host is listening.
+Both modes work simultaneously — the LittleFS write path doesn't care if a host is listening.
 
 ---
 
