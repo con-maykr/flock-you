@@ -211,6 +211,20 @@ No buzzer on this env.
 
 Boot sound (XIAO only): first 6 notes of Super Mario Bros. World 1-2 (underground).
 
+### Heltec WiFi LoRa 32 V4, ESP32-S3R2 (`heltec_wifi_lora_32_v4`)
+
+| Pin | Function |
+|-----|----------|
+| GPIO 36 | Vext power control (active low — gates the OLED rail) |
+| GPIO 21 | OLED reset |
+| GPIO 17 / 18 | OLED I2C SDA / SCL (SSD1306-compatible, 128x64, addr `0x3C`) |
+
+**Display:** same idle/alert states as the T-Dongle — `SCANNING` with channel and unique-hit count at idle, `DETECT` with method/MAC/RSSI/channel for 5 s on a hit.
+
+No buzzer, no separate status LED on this env — alerts are OLED-only. The board's onboard GNSS and LoRa (SX1262) radio are left unpowered/unused; this firmware only drives the OLED. GPS stays Flask-side, same as the other envs, if you want wardriving.
+
+This board ships in both an R2 variant (2MB PSRAM, quad mode) and an R8 variant (8MB PSRAM, octal mode) — this env targets **R2** specifically. The R8 board wires its Vext/LED/GNSS pins differently, so it isn't compatible with this env as-is.
+
 ---
 
 ## Build and flash
@@ -220,13 +234,15 @@ Requires [PlatformIO](https://platformio.org/).
 ```bash
 pio run -e xiao_esp32s3              # Seeed XIAO (default)
 pio run -e lilygo_t_dongle_s3        # LilyGO T-Dongle S3
+pio run -e heltec_wifi_lora_32_v4    # Heltec WiFi LoRa 32 V4 (ESP32-S3R2)
 
 pio run -e xiao_esp32s3 -t upload    # flash XIAO
 pio run -e lilygo_t_dongle_s3 -t upload   # flash T-Dongle (hold BOOT if port missing)
+pio run -e heltec_wifi_lora_32_v4 -t upload   # flash Heltec V4
 pio device monitor
 ```
 
-`platformio.ini` and `partitions.csv` are at the root (1.9 MB SPIFFS partition, 6 MB app). The T-Dongle env adds **TFT_eSPI** for the onboard display; XIAO needs no extra libraries.
+`platformio.ini` and `partitions.csv` are at the root (1.9 MB SPIFFS partition, 6 MB app). The T-Dongle env adds **TFT_eSPI** for its SPI display; the Heltec env adds **Adafruit SSD1306/GFX/BusIO** for its I2C OLED; XIAO needs no extra libraries. The Heltec env's flash is 16 MB, but reuses the same 8 MB partition table as the other boards — the remaining ~8 MB is simply unpartitioned.
 
 ---
 

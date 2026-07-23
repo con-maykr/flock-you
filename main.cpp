@@ -21,6 +21,13 @@
 #define APA102_FLASH_G     0
 #define APA102_FLASH_B     0
 #define MIRROR_SERIAL      0   // GPIO43 is UART TX on this board
+#elif defined(BOARD_HELTEC_V4)
+// Heltec WiFi LoRa 32 V4 (ESP32-S3R2): SSD1306 OLED via I2C, display-only
+// alert (no buzzer, no separate LED). GNSS/LoRa peripherals on this board
+// are left unpowered — this firmware only drives the OLED.
+#define USE_BUZZER         0
+#define USE_LED            0
+#define MIRROR_SERIAL      0
 #else
 // Seeed XIAO ESP32-S3
 #define BUZZER_PIN         3
@@ -1322,7 +1329,7 @@ void setup() {
   Serial.setTxTimeoutMs(0);
   delay(300);
 
-#ifdef BOARD_LILYGO_T_DONGLE_S3
+#if defined(BOARD_LILYGO_T_DONGLE_S3) || defined(BOARD_HELTEC_V4)
   dongleDisplayInit();
 #endif
 
@@ -1391,7 +1398,7 @@ void setup() {
   lastHeartbeat = millis();
   fyLastSaveAt  = millis();
 
-#ifdef BOARD_LILYGO_T_DONGLE_S3
+#if defined(BOARD_LILYGO_T_DONGLE_S3) || defined(BOARD_HELTEC_V4)
   dongleDisplayShowIdle(currentChannel, fyDetCount);
 #endif
 }
