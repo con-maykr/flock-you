@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include "esp_wifi.h"
+#include "esp_sleep.h"
 #include <ctype.h>
 #include <string.h>
 #include <LittleFS.h>
@@ -28,6 +29,9 @@
 #define USE_BUZZER         0
 #define USE_LED            0
 #define MIRROR_SERIAL      0
+#define USE_SHUTDOWN_BUTTON 1
+#define BUTTON_PIN          0      // onboard user/BOOT button, active low
+#define SHUTDOWN_HOLD_MS    5000
 #else
 // Seeed XIAO ESP32-S3
 #define BUZZER_PIN         3
@@ -37,6 +41,10 @@
 #define LED_ACTIVE_HIGH    0
 #define MIRROR_SERIAL      1
 #define MIRROR_TX_PIN      43
+#endif
+
+#ifndef USE_SHUTDOWN_BUTTON
+#define USE_SHUTDOWN_BUTTON 0   // only wired up on boards with a spare user button
 #endif
 
 #define LED_FLASH_MS       120
@@ -1319,6 +1327,65 @@ static void heartbeatTick() {
 }
 
 // ============================================================
+// SHUTDOWN BUTTON  (hold BUTTON_PIN for SHUTDOWN_HOLD_MS to power off;
+// a short press while asleep wakes the device back into a normal boot)
+// ============================================================
+
+#if USE_SHUTDOWN_BUTTON
+static unsigned long buttonDownAt = 0;
+static bool          buttonHeld   = false;
+
+// Mirrors setup()'s teardown in reverse: stop the radio, flush any dirty
+// session to flash, blank the display, then deep-sleep with the button
+// armed as an EXT0 wake source. Never returns — a short press resets
+// the chip, which re-enters setup() and resumes scanning normally.
+static void shutdownAndSleep() {
+  dualPrintln("[flockyou] shutdown: button held — powering down");
+
+  esp_wifi_set_promiscuous(false);
+  esp_wifi_stop();
+  esp_wifi_deinit();
+
+  if (fyFsReady && fyDirty) fySaveSession();
+
+#if USE_LED
+  ledSet(false);
+#endif
+#if USE_BUZZER
+  digitalWrite(BUZZER_PIN, LOW);
+#endif
+
+  dongleDisplayShutdown();
+
+  LittleFS.end();
+
+  // Wait for the button to be released before arming the wake level —
+  // otherwise EXT0 sees the still-held pin and wakes immediately.
+  while (digitalRead(BUTTON_PIN) == LOW) delay(10);
+  delay(50);  // debounce the release
+
+  esp_sleep_enable_ext0_wakeup((gpio_num_t)BUTTON_PIN, 0);  // wake on next LOW (press)
+  esp_deep_sleep_start();
+}
+
+static void shutdownButtonTick() {
+  bool down = (digitalRead(BUTTON_PIN) == LOW);
+  if (!down) {
+    buttonHeld = false;
+    return;
+  }
+  if (!buttonHeld) {
+    buttonHeld   = true;
+    buttonDownAt = millis();
+    return;
+  }
+  if (millis() - buttonDownAt >= SHUTDOWN_HOLD_MS) {
+    shutdownAndSleep();  // does not return
+  }
+}
+#endif
+
+// ============================================================
 // SETUP / LOOP
 // ============================================================
 
@@ -1349,6 +1416,10 @@ void setup() {
   pinMode(LED_PIN, OUTPUT);
   ledSet(false);
 #endif
+#endif
+
+#if USE_SHUTDOWN_BUTTON
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
 #endif
 
   startupBeep();
@@ -1409,6 +1480,9 @@ void loop() {
   autosaveTick();      // periodic LittleFS write if dirty
   heartbeatTick();     // audible beep-pair while a target is still in range
   ledTick();           // turn off LED after LED_FLASH_MS
+#if USE_SHUTDOWN_BUTTON
+  shutdownButtonTick();  // 5s hold powers off; never returns if it fires
+#endif
   dongleDisplayTick(millis(), currentChannel, fyDetCount);
   printHeartbeat();
   delay(1);

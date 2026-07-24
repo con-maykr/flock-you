@@ -24,3 +24,12 @@ static inline void dongleDisplayTick(unsigned long, uint8_t, int) {}
 static inline bool dongleDisplayInAlert(unsigned long) { return false; }
 
 #endif
+
+// Power-off screen, shown right before a board with a shutdown button cuts
+// its own display rail and deep-sleeps. Only implemented where a shutdown
+// button exists (display_heltec.cpp under USE_HELTEC_OLED).
+#if defined(USE_HELTEC_OLED)
+void dongleDisplayShutdown();
+#else
+static inline void dongleDisplayShutdown() {}
+#endif

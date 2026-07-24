@@ -144,4 +144,23 @@ void dongleDisplayTick(unsigned long now, uint8_t ch, int detCount) {
   }
 }
 
+void dongleDisplayShutdown() {
+  display.clearDisplay();
+  display.setTextColor(SSD1306_WHITE);
+  display.setTextSize(2);
+  display.setCursor(16, 16);
+  display.print("BYE");
+  display.setTextSize(1);
+  display.setCursor(2, 44);
+  display.print("Tap button");
+  display.setCursor(2, 54);
+  display.print("to wake");
+  display.display();
+  delay(600);  // let the message be visible before the rail cuts
+
+  display.clearDisplay();
+  display.display();
+  digitalWrite(HELTEC_VEXT_PIN, HIGH);  // active-low rail — HIGH cuts OLED power
+}
+
 #endif

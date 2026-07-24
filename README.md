@@ -218,10 +218,13 @@ Boot sound (XIAO only): first 6 notes of Super Mario Bros. World 1-2 (undergroun
 | GPIO 36 | Vext power control (active low — gates the OLED rail) |
 | GPIO 21 | OLED reset |
 | GPIO 17 / 18 | OLED I2C SDA / SCL (SSD1306-compatible, 128x64, addr `0x3C`) |
+| GPIO 0 | Onboard user/BOOT button — hold 5 s to shut down, tap to wake |
 
 **Display:** same idle/alert states as the T-Dongle — `SCANNING` with channel and unique-hit count at idle, `DETECT` with method/MAC/RSSI/channel for 5 s on a hit.
 
 No buzzer, no separate status LED on this env — alerts are OLED-only. The board's onboard GNSS and LoRa (SX1262) radio are left unpowered/unused; this firmware only drives the OLED. GPS stays Flask-side, same as the other envs, if you want wardriving.
+
+**Shutdown button:** holding the onboard user button for 5 s (`SHUTDOWN_HOLD_MS` in `main.cpp`) stops the WiFi radio, flushes any dirty session to LittleFS, shows a `BYE` screen, cuts power to the OLED, and drops the board into deep sleep with the same button armed as an EXT0 wake source. A short press wakes it — this triggers a normal chip reset, so the device comes back up through `setup()` and resumes scanning exactly like a fresh power-on. Not wired up on the other envs (no spare button).
 
 This board ships in both an R2 variant (2MB PSRAM, quad mode) and an R8 variant (8MB PSRAM, octal mode) — this env targets **R2** specifically. The R8 board wires its Vext/LED/GNSS pins differently, so it isn't compatible with this env as-is.
 
@@ -263,6 +266,7 @@ pio device monitor
 | `AUTOSAVE_INTERVAL_MS` | 60000 | LittleFS save cadence |
 | `LED_PIN` | 21 | Onboard user LED |
 | `BUZZER_PIN` | 3 | Piezo |
+| `SHUTDOWN_HOLD_MS` | 5000 | Heltec V4 only — button hold time to power off |
 
 ---
 
